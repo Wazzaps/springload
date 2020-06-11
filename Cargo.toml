@@ -1,0 +1,19 @@
+[package]
+name = "springload"
+version = "0.1.0"
+authors = ["David Shlemayev <secondlifedvi@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+toml = "0.5.6"
+serde = { version = "1.0.111", features = ["derive"] }
+nix = "0.17.0"
+chrono = "0.4.11"
+gag = "0.1.10"
+lazy_static = "1.4.0"
+
+[[bin]]
+path = "src/diary_bin.rs"
+name = "diary"
