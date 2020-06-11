@@ -81,13 +81,13 @@ impl Service {
         } else if let Some(log) = &self.log {
             Stdio::from(OpenOptions:: new().write(true).open(log).unwrap())
         } else {
-            Stdio::piped()
+            Stdio::inherit()
         };
 
         let stderr = if let Some(tty) = &self.tty {
             Stdio::from(OpenOptions:: new().write(true).open(tty).unwrap())
         } else {
-            Stdio::piped()
+            Stdio::inherit()
         };
 
         let stdin = if let Some(tty) = &self.tty {

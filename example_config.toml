@@ -3,12 +3,12 @@
 isolate = "none"
 type = "forking"  # Should be one-shot
 depends = ["foo.bar.service"]
-cmd = ["/bin/sh", "-c", "echo hello world"]
+cmd = ["/bin/diary", "/bin/sh", "-c", "echo hello world"]
 
 [foo.bar.service]
 isolate = "none"
 type = "forking"  # Should be one-shot
-cmd = ["/bin/sh", "-c", "echo i am foo bar"]
+cmd = ["/bin/diary", "/bin/sh", "-c", "echo i am foo bar"]
 # ------------------------
 
 
@@ -21,7 +21,7 @@ cmd = ["/bin/sleep", "2"]
 [wakey.service]
 isolate = "none"
 type = "forking"  # Should be one-shot
-cmd = ["/bin/sh", "-c", "echo sleep finished"]
+cmd = ["/bin/diary", "/bin/sh", "-c", "echo sleep finished"]
 depends = ["sleepy.service"]
 # ------------------------------------------
 
@@ -39,6 +39,6 @@ cmd = ["/bin/sh"]
 depends = [
     "shell.service",
     "hello.service",
-#    "wakey.service",
+    "wakey.service",
 ]
 # -----------------
