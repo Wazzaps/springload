@@ -6,8 +6,8 @@ use std::time::Duration;
 use std::collections::HashSet;
 use crate::unit::{UnitState, UnitRef};
 use nix::sys::wait::WaitStatus;
-use std::fs::OpenOptions;
 use std::os::unix::net::UnixStream;
+use std::sync::{RwLock, Arc, Barrier};
 
 pub mod config;
 pub mod unit;
@@ -57,8 +57,6 @@ fn calculate_next<'c>(config: &'c Config, running: &HashSet<UnitRef>, target: &H
 }
 
 fn main() {
-    println!("bold-springload v0.1.0");
-
     // Create fs structure
     {
         std::fs::create_dir_all("/proc").unwrap();
@@ -79,57 +77,69 @@ fn main() {
     std::fs::create_dir_all("/dev").unwrap();
 
     // Load config
-    let mut config = Config::from_file("/etc/springload.toml");
+    let config = Arc::new(RwLock::new(Config::from_file("/etc/springload.toml")));
 
     // Start diary
-    std::thread::spawn(diary::server);
-    sleep(Duration::from_millis(100));
+    {
+        let diary_started = Arc::new(Barrier::new(2));
+        let config_copy = config.clone();
+        let diary_started_copy = diary_started.clone();
+        std::thread::spawn(|| diary::server(config_copy, diary_started_copy));
+        diary_started.wait();
+    }
 
     let log = UnixStream::connect(diary::DIARY_PATH).unwrap();
     let _redirect = gag::Redirect::stdout(log).unwrap();
+
+    // Announce ourselves
+    println!("Starting springload v0.1.0");
 
     // Main loop
     let mut targets = HashSet::new();
     targets.insert(UnitRef::Target("interactive".to_string()));
     loop {
-        let running: HashSet<_> = config.units
-            .iter()
-            .filter(|(_, unit)| unit.state == UnitState::Started)
-            .map(|(name, _)| name)
-            .collect();
-        let (to_activate, to_deactivate, out_waiting) = calculate_next(&config, &running, &targets);
-        if !to_activate.is_empty() {
-            println!("activate: {:?}", to_activate);
-            for name in &to_activate {
-                if let UnitRef::Service(service) = name {
-                    let service = config.units.services.get_mut(service).unwrap();
-                    service.start();
-                } else if let UnitRef::Target(target) = name {
-                    let target = config.units.targets.get_mut(target).unwrap();
-                    target.unit.state = UnitState::Started;
+        {
+            let mut config = config.write().unwrap();
+            let running: HashSet<_> = config.units
+                .iter()
+                .filter(|(_, unit)| unit.state == UnitState::Started)
+                .map(|(name, _)| name)
+                .collect();
+            let (to_activate, to_deactivate, out_waiting) = calculate_next(&config, &running, &targets);
+            if !to_activate.is_empty() {
+                println!("activate: {:?}", to_activate);
+                for name in &to_activate {
+                    if let UnitRef::Service(service) = name {
+                        let service = config.units.services.get_mut(service).unwrap();
+                        service.start();
+                    } else if let UnitRef::Target(target) = name {
+                        let target = config.units.targets.get_mut(target).unwrap();
+                        target.unit.state = UnitState::Started;
+                    }
+                }
+                if !out_waiting {
+                    println!("done for now");
                 }
             }
-            if !out_waiting {
-                println!("done for now");
+            if !to_deactivate.is_empty() {
+                println!("deactivate: {:?}", to_deactivate);
             }
-        }
-        if !to_deactivate.is_empty() {
-            println!("deactivate: {:?}", to_deactivate);
         }
 
         if let Ok(wait_res) = nix::sys::wait::wait() {
-            if let WaitStatus::Exited(pid, status) = wait_res {
+            let mut config = config.write().unwrap();
+            if let WaitStatus::Exited(pid, _status) = wait_res {
                 let mut found = false;
-                for (name, service) in config.units.services.iter_mut() {
+                for (_name, service) in config.units.services.iter_mut() {
                     if service.root_pid == pid.as_raw() {
                         if service.service_type == ServiceType::Forking && service.unit.state == UnitState::Starting {
-                            println!("{}'s main process forked with status: {}", name, status);
+                            // println!("{}'s main process forked with status: {}", name, status);
                             service.unit.state = UnitState::Started;
                         } else if service.service_type == ServiceType::Simple && service.unit.state == UnitState::Started {
-                            println!("{}'s main process exited with status: {}", name, status);
+                            // println!("{}'s main process exited with status: {}", name, status);
                             service.unit.state = UnitState::Stopped;
                         } else {
-                            println!("{}'s main process exited with status: {}", name, status);
+                            // println!("{}'s main process exited with status: {}", name, status);
                         }
                         service.root_pid = 0;
                         found = true;
@@ -137,15 +147,14 @@ fn main() {
                     }
                 }
                 if !found {
-                    println!("pid {} exited with status: {}", pid.as_raw(), status);
+                    // println!("pid {} exited with status: {}", pid.as_raw(), status);
                 }
             } else {
                 println!("{:?}", wait_res);
             }
         } else {
-            sleep(Duration::from_millis(500));
+            sleep(Duration::from_millis(10));
         }
-        sleep(Duration::from_millis(10))
     }
 
     // Run units

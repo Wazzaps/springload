@@ -29,16 +29,67 @@ depends = ["sleepy.service"]
 # ---- Essential services ----
 [shell.service]
 isolate = "none"
+tty = "/dev/ttyS0"
+#cmd = ["/bin/setsid", "-c", "/bin/sh"]
+depends = ["tmproot.mount.service", "hostname.service"]
+cmd = [
+    "/bin/setsid", "-c", "/bin/chroot", "/rwroot",
+    "/bin/env",
+    "LD_LIBRARY_PATH=/lib:/usr/lib:/usr/local/lib:/usr/local/lib/x86_64-linux-gnu",
+    "XDG_RUNTIME_DIR=/tmp",
+    "LD_PRELOAD=/lib/fcntl-fix.so",
+    "PATH=/bin:/usr/bin:/usr/local/bin",
+    "/usr/bin/fish"
+]
+
+[weston.service]
+isolate = "none"
 tty = "/dev/tty1"
-cmd = ["/bin/sh"]
+depends = ["tmproot.mount.service", "hostname.service"]
+cmd = [
+    "/bin/diary", "/bin/setsid", "-c", "/bin/chroot", "/rwroot",
+    "/bin/env",
+    "LD_LIBRARY_PATH=/lib:/usr/lib:/usr/local/lib:/usr/local/lib/x86_64-linux-gnu",
+    "XDG_RUNTIME_DIR=/tmp",
+    "LD_PRELOAD=/lib/fcntl-fix.so",
+    "PATH=/bin:/usr/bin:/usr/local/bin",
+    "/usr/local/bin/weston-launch", "--verbose", "--", "-B", "fbdev-backend.so", "--device=/dev/fb0"
+]
+
+[tmproot.mount.service]
+isolate = "none"
+type = "forking"
+depends = ["rootfs.mount.service"]
+cmd = ["/bin/sh", "-c", "mkdir -p /rwroot /tmp; mount -t tmpfs tmpfs /tmp; mkdir -p /tmp/work /tmp/rw; mount -t overlay overlay -o lowerdir=/root/gui,upperdir=/tmp/rw,workdir=/tmp/work /rwroot; mkdir -p /rwroot/proc /rwroot/dev /rwroot/tmp; mount -t proc proc /rwroot/proc; mount -t devtmpfs dev /rwroot/dev; mkdir /rwroot/dev/shm"]
+
+[rootfs.mount.service]
+isolate = "none"
+type = "forking"
+cmd = ["/bin/sh", "-c", "modprobe -a 9p 9pnet_virtio overlay; mount -t 9p -o trans=virtio,version=9p2000.L rootfs /root"]
+
+[hostname.service]
+isolate = "none"
+type = "forking"
+cmd = ["/bin/hostname", "bold-os"]
 # ----------------------------
+
+
+# ---- Shiny ----
+[shiny-placeholder.service]
+isolate = "none"
+type = "forking"
+cmd = ["/bin/sh", "-c", "cat </usr/share/shiny-placeholder.bin >/dev/fb0"]
+# ------------------------------------------
 
 
 # ---- Targets ----
 [interactive.target]
 depends = [
     "shell.service",
-    "hello.service",
-    "wakey.service",
+    "weston.service",
+    # "shiny-placeholder.service",
+    # "hello.service",
+    # "wakey.service",
+    "rootfs.mount.service",
 ]
 # -----------------
